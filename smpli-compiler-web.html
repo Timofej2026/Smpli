@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>simply (smpli) IDE</title>
+    <script src="https://jsdelivr.net"></script>
+    <style>
+        body { margin: 0; font-family: monospace; background: #0b0f19; color: #fff; display: flex; flex-direction: column; height: 100vh; }
+        header { background: #141b2d; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #232d45; }
+        .logo { font-size: 20px; font-weight: bold; color: #4f46e5; }
+        .main-box { display: flex; flex: 1; overflow: hidden; }
+        textarea { flex: 1; background: #111827; color: #10b981; border: none; padding: 15px; font-family: monospace; font-size: 16px; resize: none; outline: none; }
+        .preview-pane { width: 40%; background: #0a0d16; border-left: 2px solid #232d45; display: flex; flex-direction: column; }
+        .screen { flex: 1; position: relative; background: #020617; overflow: auto; padding: 20px; }
+        .smpli-element { position: absolute; color: white; font-size: 18px; white-space: nowrap; }
+        .smpli-console-log { margin-bottom: 5px; color: #e2e8f0; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">smpli Engine v2.0 (.simp) 🚀</div>
+    </header>
+
+    <div class="main-box">
+        <textarea id="codeEditor" oninput="runSmpliCode()" placeholder=""></textarea>
+        <div class="preview-pane">
+            <div class="screen" id="virtualScreen"></div>
+        </div>
+    </div>
+
+<script>
+    let pyodideReady = false;
+    let pyodide;
+
+    async function initPython() {
+        pyodide = await loadPyodide();
+        pyodideReady = true;
+        runSmpliCode();
+    }
+    initPython();
+
+    async function runSmpliCode() {
+        if (!pyodideReady) return;
+        
+        const screen = document.getElementById('virtualScreen');
+        screen.innerHTML = ''; 
+        
+        const smpliCode = document.getElementById('codeEditor').value;
+        if (!smpliCode.trim()) return;
+        
+        const pythonTranslatorScript = `
+import re
+import json
+
+def translate(code_text):
+    lines = code_text.split('\\n')
+    py_lines = [
+        "import json", 
+        "output_elements = []", 
+        "xyz =", 
+        "hint_val = ''",
+        "valid_types = ['3Dmodel', '2DSprite', 'textDocument', 'script', 'pythonScript', '3Dprefab', '2Dprefab', '3Dscene', '2Dscene', 'picturePNG', 'pictureJPG', 'videoMP4', 'videoMOV', 'musicMP3', 'musicOGG']",
+        "current_dt = None"
+    ]
+    
+    for line in lines:
+        line = line.strip()
+        if not line or line in ['start', 'data']: continue
+        if line == 'stop': break
+        if line.startswith('scriptTag(') or line.startswith('use('): continue
+        
+        if line == "{" or line == "}":
+            continue
+
+        if line.startswith('addDataType(') and line.endswith(')'):
+            new_type = line[12:-1].strip()
+            py_lines.append(f"valid_types.append('{new_type}')")
+            continue
+
+        if line.startswith('dataType(') and line.endswith(')'):
+            dt = line[9:-1].strip()
+            py_lines.append(f"if '{dt}' in valid_types: current_dt = '{dt}'")
+            continue
+
+        if line.startswith('ccor('):
+            coords = line[5:-1].split(',')
+            py_lines.append(f"xyz = [{','.join(coords)}]")
+            continue
+            
+        if line.startswith('hint('):
+            py_lines.append(f"hint_val = str({line[5:-1]})")
+            continue
+            
+        if line.startswith('putText('):
+            val = line[8:-1].strip()
+            py_lines.append(f"output_elements.append({{'type': 'text', 'text': str({val}), 'x': xyz, 'y': xyz}})")
+            continue
+        if line.startswith('putNum('):
+            val = line[7:-1].strip()
+            py_lines.append(f"output_elements.append({{'type': 'num', 'text': str({val}), 'x': xyz, 'y': xyz}})")
+            continue
+
+        if line.startswith('print('):
+            py_lines.append(f"output_elements.append({{'type': 'console', 'text': str({line[6:-1]})}})")
+            continue
+        if line.startswith('printHex('):
+            py_lines.append(f"output_elements.append({{'type': 'console', 'text': hex(int({line[9:-1]}))}})")
+            continue
+        if line.startswith('printBinary('):
+            py_lines.append(f"output_elements.append({{'type': 'console', 'text': bin(int({line[12:-1]}))}})")
+            continue
+            
+        if line.startswith('alert('):
+            py_lines.append(f"output_elements.append({{'type': 'alert', 'text': str({line[6:-1]})}})")
+            continue
+            
+        var_match = re.match(r"([a-zA-Z0-9_().]+)\\s*=\\s*\\((.*)\\)", line)
+        if var_match:
+            left = var_match.group(1).replace("()", "").strip()
+            expr = var_match.group(2).strip()
+            py_lines.append(f"{left} = {expr}")
+            continue
+            
+        if line.startswith('if ') and ('then' in line or 'do' in line or 'toDo()' in line):
+            cond_match = re.search(r"if\\s+\\((.*)\\)\\s+(then|do|toDo\\(\\))", line)
+            if cond_match:
+                py_lines.append(f"if {cond_match.group(1)}:")
+                py_lines.append("    pass")
+            
+    py_lines.append("json.dumps(output_elements)")
+    return "\\n".join(py_lines)
+
+compiled_py = translate("""${smpliCode}""")
+`;
+
+        try {
+            await pyodide.runPythonAsync(pythonTranslatorScript);
+            const userGeneratedPython = pyodide.globals.get('compiled_py');
+            
+            const jsonResult = await pyodide.runPythonAsync(userGeneratedPython);
+            const elements = JSON.parse(jsonResult);
+            
+            elements.forEach(el => {
+                if (el.type === 'text' || el.type === 'num') {
+                    const d = document.createElement('div');
+                    d.className = 'smpli-element';
+                    d.style.left = el.x + 'px';
+                    d.style.top = el.y + 'px';
+                    if (el.type === 'num') d.style.color = '#10b981';
+                    d.innerText = el.text;
+                    screen.appendChild(d);
+                } else if (el.type === 'console') {
+                    const d = document.createElement('div');
+                    d.className = 'smpli-console-log';
+                    d.innerText = el.text;
+                    screen.appendChild(d);
+                } else if (el.type === 'alert') {
+                    alert(el.text);
+                }
+            });
+            
+        } catch (err) {}
+    }
+</script>
+</body>
+</html>
+
