@@ -4,7 +4,7 @@
 - It's compliable language.
 - It has compliers in Python, HTML, C# and C.
 - It's simple. Very simple.
-### Warning! It can work bad or good, idk, I didn't test. And it also has not many commands.
+** Warning! It can work bad or good, idk, I didn't test. And it also has not many commands.
 - You can make any program, engine, tool and even files!
 
 ## How to download?
