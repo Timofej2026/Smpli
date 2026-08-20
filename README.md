@@ -9,22 +9,22 @@
 
 ## How to download?
 
-Python complier:
+- Python complier:
 ```bash
 curl -L https://githubusercontent.com -o smpli-compiler-python.py
 ```
 
-HTML complier:
+- HTML complier:
 ```bash
 curl -L https://githubusercontent.com -o smpli-compiler-web.html
 ```
 
-C complier:
+- C complier:
 ```bash
 curl -L https://githubusercontent.com -o smpli-compiler-c.c
 ```
 
-C# complier:
+- C# complier:
 ```bash
 curl -L https://githubusercontent.com -o smpli-compiler-csharp.cs
 ```
